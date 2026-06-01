@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Control Topográfico Terreno</title>
+    
+    <meta name="theme-color" content="#0056b3">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #0056b3;
+            --bg: #f4f7f6;
+            --border: #ccc;
+            --alert: #dc3545;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            font-size: 14px;
+        }
+        
+        #header-panel {
+            display: block; 
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            z-index: 3000;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            box-sizing: border-box;
+        }
+        
+        #panel-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2900;
+            display: block;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+        .control-group label { font-weight: bold; width: 90px; font-size: 13px; }
+        .control-group input, .control-group select {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 15px; 
+        }
+        .ai-display {
+            background: #e9ecef;
+            font-weight: bold;
+            color: var(--primary);
+            text-align: center;
+        }
+        
+        .btn-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            color: white;
+            background-color: var(--primary);
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+        }
+        .btn-clear { background-color: #6c757d; }
+        .btn-export { background-color: #28a745; }
+        .btn-close { background-color: #000; margin-top: 10px; width: 100%; }
+
+        .fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 55px;
+            height: 55px;
+            background-color: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            border: none;
+            z-index: 2000;
+            cursor: pointer;
+        }
+        
+        #table-container {
+            width: 100vw;
+            height: 100vh;
+            overflow: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            min-width: 650px;
+        }
+        
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        th {
+            background-color: var(--primary);
+            color: white;
+            font-size: 13px;
+            border: 1px solid var(--border);
+            padding: 8px 4px;
+        }
+        
+        td {
+            border: 1px solid var(--border);
+            padding: 7px 4px;
+            text-align: center;
+        }
+        
+        .col-izq { background-color: #f8d7da; color: black; }
+        .col-eje { background-color: #d1ecf1; color: black; }
+        .col-der { background-color: #d4edda; color: black; }
+
+        .input-real {
+            width: 55px;
+            padding: 5px;
+            font-size: 14px;
+            border: 1px solid #0056b3;
+            border-radius: 3px;
+            text-align: center;
+        }
+        .pto-cambio { color: white; background-color: var(--alert); font-weight: bold; padding: 2px 4px; border-radius: 3px; font-size: 11px; }
+        
+        #file-input { margin-bottom: 15px; width: 100%; }
+        
+        .modo-consulta { display: none !important; }
+    </style>
+<!-- Configuración de ícono y comportamiento PWA -->
+<link rel="manifest" href='data:application/manifest+json,{"name":"Control Topo","short_name":"Topo","start_url":"./index.html","display":"standalone","background_color":"#ffffff","theme_color":"#0056b3","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3203/3203929.png","sizes":"512x512","type":"image/png"}]}'>
+</head>
+<body>
+
+    <div id="panel-overlay" onclick="togglePanel()"></div>
+
+    <div id="header-panel">
+        <h3 style="margin-top:0; color:var(--primary); text-align:center;">Configuración</h3>
+        <input type="file" id="file-input" accept=".xlsx, .xls" />
+        
+        <div class="control-group">
+            <label>Capa:</label>
+            <select id="sheet-select" disabled onchange="renderTable()">
+                <option value="">Cargue un archivo primero...</option>
+            </select>
+        </div>
+        
+        <div class="control-group panel-interactivo">
+            <label>Cota PR:</label>
+            <input type="number" id="cota-pr" step="0.001" oninput="calcularAI()">
+            <label style="width: auto;">L. Atrás:</label>
+            <input type="number" id="lectura-atras" step="0.001" oninput="calcularAI()">
+        </div>
+        
+        <div class="control-group panel-interactivo">
+            <label>Alt. Inst (AI):</label>
+            <input type="text" id="ai-resultado" class="ai-display" readonly placeholder="0.000">
+        </div>
+
+        <div class="btn-container panel-interactivo">
+            <button class="btn-clear" onclick="limpiarLecturas()">🗑️ Limpiar</button>
+            <button class="btn-export" onclick="exportarDiferencias()">💾 Exportar</button>
+        </div>
+        
+        <button class="btn-close" onclick="togglePanel()">❌ Cerrar Ventana</button>
+    </div>
+
+    <button class="fab" onclick="togglePanel()" title="Abrir Panel">⚙️</button>
+
+    <div id="table-container">
+        <table id="data-table">
+            <thead>
+                <tr>
+                    <th rowspan="2">Dm</th>
+                    <th colspan="3" id="th-izq">L. Izq</th>
+                    <th colspan="3" id="th-eje">L. Eje</th>
+                    <th colspan="3" id="th-der">L. Der</th>
+                </tr>
+                <tr>
+                    <th>Teorica</th><th class="col-dinamica">Real</th><th class="col-dinamica">Dif(mm)</th>
+                    <th>Teorica</th><th class="col-dinamica">Real</th><th class="col-dinamica">Dif(mm)</th>
+                    <th>Teorica</th><th class="col-dinamica">Real</th><th class="col-dinamica">Dif(mm)</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <tr><td colspan="10" style="padding: 40px; font-size:16px;"><b>Abra el menú ⚙️ y cargue su archivo Excel para comenzar.</b></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let excelData = {}; 
+        let currentAI = 0;
+        let esModoConsulta = false;
+
+        function togglePanel() {
+            const panel = document.getElementById('header-panel');
+            const overlay = document.getElementById('panel-overlay');
+            if (panel.style.display === 'none' || panel.style.display === '') {
+                panel.style.display = 'block';
+                overlay.style.display = 'block';
+            } else {
+                panel.style.display = 'none';
+                overlay.style.display = 'none';
+            }
+        }
+
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                
+                excelData = {}; 
+                const select = document.getElementById('sheet-select');
+                select.innerHTML = '';
+                
+                const hojasOrdenadas = [];
+                workbook.SheetNames.forEach(name => {
+                    const n = name.toLowerCase();
+                    if(n.includes("subrasante") || n.includes("subbase") || n.includes("base")) {
+                        hojasOrdenadas.push(name);
+                    }
+                });
+
+                hojasOrdenadas.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                    excelData[sheetName] = procesarHojaGenerica(json, sheetName);
+                    
+                    let option = document.createElement('option');
+                    option.value = sheetName;
+                    option.text = sheetName;
+                    select.appendChild(option);
+                });
+
+                if(hojasOrdenadas.length > 0) {
+                    select.disabled = false;
+                    renderTable();
+                    togglePanel(); 
+                } else {
+                    alert("No se encontraron capas válidas.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function procesarHojaGenerica(filas, nombreHoja) {
+            let datosProcesados = [];
+            let inicioDatos = false;
+            let esInteractiva = nombreHoja.toLowerCase().includes("lecturas");
+            let idxIzq = 1, idxEje = 3, idxDer = 5; 
+            
+            if(!esInteractiva) {
+                idxIzq = 2; idxEje = 5; idxDer = 8; 
+            }
+
+            for(let i=0; i<filas.length; i++) {
+                let fila = filas[i];
+                if (!fila || fila.length === 0) continue;
+                
+                let celda0 = String(fila[0]).trim();
+                if(celda0.startsWith("Dm")) {
+                    inicioDatos = true;
+                    continue; 
+                }
+
+                if(inicioDatos && !isNaN(parseFloat(fila[0]))) {
+                    datosProcesados.push({
+                        dm: fila[0],
+                        cotaIzq: parseFloat(fila[idxIzq]) || 0, 
+                        cotaEje: parseFloat(fila[idxEje]) || 0, 
+                        cotaDer: parseFloat(fila[idxDer]) || 0  
+                    });
+                }
+            }
+            return datosProcesados;
+        }
+
+        function calcularAI() {
+            let cotaPR = parseFloat(document.getElementById('cota-pr').value) || 0;
+            let lectAtras = parseFloat(document.getElementById('lectura-atras').value) || 0;
+            
+            if (document.getElementById('cota-pr').value && document.getElementById('lectura-atras').value) {
+                currentAI = cotaPR + lectAtras;
+                document.getElementById('ai-resultado').value = currentAI.toFixed(3);
+                actualizarTablaDinamica();
+            } else {
+                currentAI = 0;
+                document.getElementById('ai-resultado').value = "";
+            }
+        }
+
+        function renderTable() {
+            const sheetName = document.getElementById('sheet-select').value;
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            if(!sheetName || !excelData[sheetName]) return;
+
+            esModoConsulta = !sheetName.toLowerCase().includes("lecturas");
+
+            document.getElementById('th-izq').colSpan = esModoConsulta ? 1 : 3;
+            document.getElementById('th-eje').colSpan = esModoConsulta ? 1 : 3;
+            document.getElementById('th-der').colSpan = esModoConsulta ? 1 : 3;
+
+            const elementosInteractivos = document.querySelectorAll('.panel-interactivo');
+            elementosInteractivos.forEach(el => {
+                el.style.display = esModoConsulta ? 'none' : 'flex';
+            });
+
+            const datos = excelData[sheetName];
+            
+            datos.forEach((filaDatos, index) => {
+                let tr = document.createElement('tr');
+                
+                if (esModoConsulta) {
+                    tr.innerHTML = `
+                        <td><b>${filaDatos.dm}</b></td>
+                        <td class="col-izq">${filaDatos.cotaIzq.toFixed(3)}</td>
+                        <td class="col-eje">${filaDatos.cotaEje.toFixed(3)}</td>
+                        <td class="col-der">${filaDatos.cotaDer.toFixed(3)}</td>
+                    `;
+                } else {
+                    tr.innerHTML = `
+                        <td><b>${filaDatos.dm}</b></td>
+                        
+                        <td class="col-izq" id="teo-izq-${index}" data-cota="${filaDatos.cotaIzq}">-</td>
+                        <td class="col-izq"><input type="number" step="0.001" class="input-real" id="real-izq-${index}" oninput="calcularDiferencia(${index}, 'izq')"></td>
+                        <td class="col-izq" id="dif-izq-${index}">-</td>
+
+                        <td class="col-eje" id="teo-eje-${index}" data-cota="${filaDatos.cotaEje}">-</td>
+                        <td class="col-eje"><input type="number" step="0.001" class="input-real" id="real-eje-${index}" oninput="calcularDiferencia(${index}, 'eje')"></td>
+                        <td class="col-eje" id="dif-eje-${index}">-</td>
+
+                        <td class="col-der" id="teo-der-${index}" data-cota="${filaDatos.cotaDer}">-</td>
+                        <td class="col-der"><input type="number" step="0.001" class="input-real" id="real-der-${index}" oninput="calcularDiferencia(${index}, 'der')"></td>
+                        <td class="col-der" id="dif-der-${index}">-</td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+
+            const colsDinamicas = document.querySelectorAll('.col-dinamica');
+            colsDinamicas.forEach(col => {
+                col.style.display = esModoConsulta ? 'none' : 'table-cell';
+            });
+
+            if(!esModoConsulta) {
+                actualizarTablaDinamica();
+            }
+        }
+
+        function actualizarTablaDinamica() {
+            if(currentAI === 0 || esModoConsulta) return;
+            
+            const posiciones = ['izq', 'eje', 'der'];
+            const datos = excelData[document.getElementById('sheet-select').value];
+
+            datos.forEach((filaDatos, i) => {
+                posiciones.forEach(pos => {
+                    let celdaTeo = document.getElementById(`teo-${pos}-${i}`);
+                    if(!celdaTeo) return;
+                    
+                    let cotaProy = parseFloat(celdaTeo.getAttribute('data-cota'));
+                    let lecturaTeorica = currentAI - cotaProy;
+
+                    if (lecturaTeorica > 4.000 || lecturaTeorica < 0) {
+                        celdaTeo.innerHTML = `<span class="pto-cambio">Cambio</span>`;
+                        celdaTeo.setAttribute('data-teo', 'inválido');
+                    } else {
+                        celdaTeo.innerHTML = lecturaTeorica.toFixed(3);
+                        celdaTeo.setAttribute('data-teo', lecturaTeorica.toFixed(3));
+                    }
+                    calcularDiferencia(i, pos);
+                });
+            });
+        }
+
+        function calcularDiferencia(index, pos) {
+            let celdaTeo = document.getElementById(`teo-${pos}-${index}`);
+            let inputReal = document.getElementById(`real-${pos}-${index}`);
+            let celdaDif = document.getElementById(`dif-${pos}-${index}`);
+
+            if(!celdaTeo || !inputReal) return;
+
+            let valTeo = celdaTeo.getAttribute('data-teo');
+            let valReal = parseFloat(inputReal.value);
+
+            if (valTeo === 'inválido' || isNaN(valReal) || inputReal.value === "") {
+                celdaDif.innerHTML = "-";
+                celdaDif.style.fontWeight = "normal";
+                celdaDif.style.color = "black";
+                return;
+            }
+
+            let numTeo = parseFloat(valTeo);
+            let diferenciaMm = Math.round((numTeo - valReal) * 1000);
+            
+            celdaDif.innerHTML = diferenciaMm;
+            celdaDif.style.fontWeight = "bold";
+            celdaDif.style.color = diferenciaMm < 0 ? "red" : (diferenciaMm > 0 ? "blue" : "green");
+        }
+
+        function limpiarLecturas() {
+            if(confirm("¿Borrar lecturas de campo cargadas en esta sección?")) {
+                let inputs = document.querySelectorAll('.input-real');
+                inputs.forEach(input => input.value = "");
+                actualizarTablaDinamica(); 
+            }
+        }
+
+        function exportarDiferencias() {
+            const sheetName = document.getElementById('sheet-select').value;
+            if(!sheetName || esModoConsulta) {
+                alert("Seleccione una hoja de 'Lecturas' válida para exportar.");
+                return;
+            }
+
+            let datosAExportar = [["Dm", "AIF Izq (mm)", "AIF Eje (mm)", "AIF Der (mm)"]];
+            const datos = excelData[sheetName];
+
+            datos.forEach((fila, i) => {
+                let difIzq = document.getElementById(`dif-izq-${i}`).innerText;
+                let difEje = document.getElementById(`dif-eje-${i}`).innerText;
+                let difDer = document.getElementById(`dif-der-${i}`).innerText;
+
+                if(difIzq !== "-" || difEje !== "-" || difDer !== "-") {
+                    datosAExportar.push([
+                        fila.dm, 
+                        difIzq !== "-" ? parseInt(difIzq) : "", 
+                        difEje !== "-" ? parseInt(difEje) : "", 
+                        difDer !== "-" ? parseInt(difDer) : ""
+                    ]);
+                }
+            });
+
+            if(datosAExportar.length === 1) {
+                alert("No hay registros o diferencias calculadas para exportar.");
+                return;
+            }
+
+            let ws = XLSX.utils.aoa_to_sheet(datosAExportar);
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Diferencias");
+            XLSX.writeFile(wb, `Diferencias_${sheetName}.xlsx`);
+        }
+
+        // --- MAGIA PWA: REGISTRO DE SERVICE WORKER PARA MODO OFFLINE ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swCode = `
+                    const CACHE_NAME = 'topografia-offline-v1';
+                    const urlsToCache = [
+                        location.href,
+                        'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+                    ];
+                    self.addEventListener('install', event => {
+                        event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+                    });
+                    self.addEventListener('fetch', event => {
+                        event.respondWith(caches.match(event.request).then(res => res || fetch(event.request)));
+                    });
+                `;
+                const blob = new Blob([swCode], {type: 'application/javascript'});
+                const swUrl = URL.createObjectURL(blob);
+                navigator.serviceWorker.register(swUrl).then(() => console.log('Modo Offline Activado.'));
+            });
+        }
+    </script>
+</body>
+</html>
