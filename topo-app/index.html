@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color"                        content="#0056b3" id="theme-meta">
+  <meta name="mobile-web-app-capable"             content="yes">
+  <meta name="apple-mobile-web-app-capable"       content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title"         content="CtrlTopo">
+  <link rel="manifest" href="./manifest.json">
+  <title>Control Topográfico</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    /* ═══════════════════════════════ VARIABLES ═════════════════════════════ */
+    :root {
+      --primary:   #0056b3;
+      --primary-d: #003d80;
+      --bg:        #f0f4f8;
+      --surface:   #ffffff;
+      --text:      #1a1a2e;
+      --text-soft: #555;
+      --border:    #ccc;
+      --alert:     #dc3545;
+      --success:   #28a745;
+      --warn:      #ffc107;
+      --izq-bg:    #fde8eb;
+      --eje-bg:    #d6f0f7;
+      --der-bg:    #d9f2e0;
+      --izq-th:    #c0392b;
+      --eje-th:    #1a6d8a;
+      --der-th:    #1a6d3a;
+      --row-alt:   #f7fafc;
+      --input-bg:  #ffffff;
+      --fab-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    }
+    body.dark {
+      --primary:   #2980d4;
+      --primary-d: #1a5fa0;
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --text:      #e6edf3;
+      --text-soft: #8b949e;
+      --border:    #30363d;
+      --alert:     #f85149;
+      --success:   #3fb950;
+      --warn:      #d29922;
+      --izq-bg:    #2d1217;
+      --eje-bg:    #0d2535;
+      --der-bg:    #0d2515;
+      --izq-th:    #a93226;
+      --eje-th:    #1360a0;
+      --der-th:    #1a6d3a;
+      --row-alt:   #1c2128;
+      --input-bg:  #21262d;
+    }
+
+    /* ═══════════════════════════════ BASE ══════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      transition: background .2s, color .2s;
+    }
+
+    /* ═══════════════════════════════ OVERLAY / PANEL ════════════════════ */
+    #overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 2900;
+    }
+    #panel {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--surface);
+      padding: 20px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+      z-index: 3000;
+      border-radius: 12px;
+      width: 92%;
+      max-width: 420px;
+    }
+    #panel h3 {
+      margin: 0 0 14px;
+      color: var(--primary);
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .ctrl {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+    .ctrl label {
+      font-weight: bold;
+      font-size: 12px;
+      color: var(--text-soft);
+      width: 80px;
+      flex-shrink: 0;
+    }
+    .ctrl input, .ctrl select {
+      flex: 1;
+      padding: 9px 8px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-size: 15px;
+      background: var(--input-bg);
+      color: var(--text);
+    }
+    .ctrl input:focus, .ctrl select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .ai-val {
+      background: var(--bg);
+      font-weight: bold;
+      color: var(--primary);
+      text-align: center;
+      border-color: var(--primary) !important;
+    }
+
+    #file-input {
+      width: 100%;
+      margin-bottom: 12px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    button {
+      padding: 10px 8px;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      color: white;
+      background: var(--primary);
+      cursor: pointer;
+      font-weight: bold;
+      flex: 1;
+      transition: opacity .15s;
+    }
+    button:active { opacity: .75; }
+    .btn-gray    { background: #6c757d; }
+    .btn-green   { background: var(--success); }
+    .btn-close   { background: #1a1a2e; margin-top: 10px; width: 100%; display: block; flex: none; }
+    body.dark .btn-close { background: #30363d; }
+
+    /* ═══════════════════════════════ FAB ════════════════════════════════ */
+    #fab {
+      position: fixed;
+      bottom: 18px; right: 18px;
+      width: 52px; height: 52px;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center; justify-content: center;
+      font-size: 22px;
+      box-shadow: var(--fab-shadow);
+      z-index: 2000;
+      border: none;
+      cursor: pointer;
+      flex: none;
+    }
+
+    /* ═══════════════════════════════ AI BAR ═════════════════════════════ */
+    #ai-bar {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: var(--primary-d);
+      color: white;
+      padding: 5px 12px;
+      font-size: 13px;
+      font-weight: bold;
+      z-index: 1500;
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    #ai-bar span { flex: 1; }
+    #dark-toggle {
+      background: transparent;
+      border: 1.5px solid rgba(255,255,255,0.5);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 16px;
+      color: white;
+      cursor: pointer;
+      flex: none;
+    }
+
+    /* ═══════════════════════════════ STATS BAR ══════════════════════════ */
+    #stats-bar {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1.5px solid var(--border);
+      padding: 5px 10px;
+      font-size: 12px;
+      z-index: 1500;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .stat { display: flex; align-items: center; gap: 4px; }
+    .stat-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* ═══════════════════════════════ TABLE ══════════════════════════════ */
+    #table-wrap {
+      width: 100vw;
+      overflow: auto;
+      /* espacio para ai-bar arriba y stats-bar abajo cuando están visibles */
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      min-width: 560px;
+    }
+    thead { position: sticky; top: 0; z-index: 100; }
+    th {
+      border: 1px solid var(--border);
+      padding: 7px 4px;
+      font-size: 12px;
+      color: white;
+      background: var(--primary);
+    }
+    th.th-izq { background: var(--izq-th); }
+    th.th-eje { background: var(--eje-th); }
+    th.th-der { background: var(--der-th); }
+    td {
+      border: 1px solid var(--border);
+      padding: 6px 3px;
+      text-align: center;
+      font-size: 13px;
+    }
+    tr:nth-child(even) td { background: var(--row-alt); }
+    td.col-izq { background: var(--izq-bg); }
+    td.col-eje { background: var(--eje-bg); }
+    td.col-der { background: var(--der-bg); }
+    td.col-dm  { font-weight: bold; min-width: 48px; }
+
+    .inp {
+      width: 58px;
+      padding: 5px 3px;
+      font-size: 14px;
+      border: 1.5px solid var(--primary);
+      border-radius: 4px;
+      text-align: center;
+      background: var(--input-bg);
+      color: var(--text);
+    }
+    .inp:focus { outline: none; box-shadow: 0 0 0 2px rgba(0,86,179,.3); }
+
+    .badge-cambio {
+      background: var(--alert);
+      color: white;
+      font-weight: bold;
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    /* colores diferencias */
+    .dif-ok   { color: #1a7a1a; font-weight: bold; }
+    .dif-warn { color: #a07a00; font-weight: bold; }
+    .dif-high { color: #c00;    font-weight: bold; }
+    .dif-pos  { color: #0044aa; }  /* sobre cota */
+    .dif-neg  { color: #cc2200; }  /* bajo cota  */
+
+    /* ═══════════════════════════════ MISC ═══════════════════════════════ */
+    #empty-msg { padding: 50px 20px; font-size: 15px; text-align: center; color: var(--text-soft); }
+    .sep { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  </style>
+</head>
+<body>
+
+<!-- Overlay + Panel de configuración -->
+<div id="overlay" onclick="closePanel()"></div>
+<div id="panel">
+  <h3>⚙️ Configuración</h3>
+
+  <input type="file" id="file-input" accept=".xlsx,.xls">
+
+  <div class="ctrl">
+    <label>Capa:</label>
+    <select id="sheet-select" disabled onchange="onSheetChange()">
+      <option>Cargue un archivo primero…</option>
+    </select>
+  </div>
+
+  <hr class="sep">
+
+  <div class="ctrl panel-inter">
+    <label>Cota PR:</label>
+    <input type="number" id="cota-pr" step="0.001" placeholder="0.000" oninput="calcAI()">
+  </div>
+  <div class="ctrl panel-inter">
+    <label>L. Atrás:</label>
+    <input type="number" id="lat" step="0.001" placeholder="0.000" oninput="calcAI()">
+  </div>
+  <div class="ctrl panel-inter">
+    <label>AI:</label>
+    <input type="text" id="ai-out" class="ai-val" readonly placeholder="—">
+  </div>
+
+  <div class="btn-row panel-inter">
+    <button class="btn-gray"  onclick="limpiarLecturas()">🗑️ Limpiar todo</button>
+    <button class="btn-green" onclick="exportar()">💾 Exportar</button>
+  </div>
+
+  <button class="btn-close" onclick="closePanel()">✖ Cerrar</button>
+</div>
+
+<!-- Barra superior fija: AI actual + toggle dark mode -->
+<div id="ai-bar">
+  <span id="ai-bar-txt">AI: —</span>
+  <span id="stats-inline"></span>
+  <button id="dark-toggle" onclick="toggleDark()" title="Modo oscuro">🌙</button>
+</div>
+
+<!-- Tabla principal -->
+<div id="table-wrap" style="padding-top:0">
+  <table id="data-table">
+    <thead>
+      <tr>
+        <th rowspan="2">Dm</th>
+        <th colspan="3" class="th-izq" id="th-izq">IZQUIERDA</th>
+        <th colspan="3" class="th-eje" id="th-eje">EJE</th>
+        <th colspan="3" class="th-der" id="th-der">DERECHA</th>
+      </tr>
+      <tr>
+        <th class="th-izq">Cota Proy.</th>
+        <th class="th-izq col-dinamica">L. Teórica</th>
+        <th class="th-izq col-dinamica">Dif (mm)</th>
+        <th class="th-eje">Cota Proy.</th>
+        <th class="th-eje col-dinamica">L. Teórica</th>
+        <th class="th-eje col-dinamica">Dif (mm)</th>
+        <th class="th-der">Cota Proy.</th>
+        <th class="th-der col-dinamica">L. Teórica</th>
+        <th class="th-der col-dinamica">Dif (mm)</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="10" id="empty-msg">
+        Abra el menú <b>⚙️</b> y cargue su archivo Excel para comenzar.
+      </td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Barra inferior estadísticas -->
+<div id="stats-bar">
+  <b>Puntos:</b>
+  <span class="stat"><span class="stat-dot" style="background:#1a7a1a"></span><span id="s-ok">0</span> OK</span>
+  <span class="stat"><span class="stat-dot" style="background:#0044aa"></span><span id="s-hi">0</span> Alto</span>
+  <span class="stat"><span class="stat-dot" style="background:#cc2200"></span><span id="s-lo">0</span> Bajo</span>
+  <span class="stat"><span class="stat-dot" style="background:#aaa"></span><span id="s-nd">0</span> Sin medir</span>
+</div>
+
+<!-- Botón flotante -->
+<button id="fab" onclick="openPanel()" title="Configuración">⚙️</button>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESTADO GLOBAL
+═══════════════════════════════════════════════════════════════════════════ */
+let sheets    = {};       // {sheetName: [{dm, cotaIzq, cotaEje, cotaDer}]}
+let currentAI = 0;
+let isModoConsulta = true;
+let currentSheet = '';
+
+const STORAGE_KEY = 'topo_readings_v2';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE
+═══════════════════════════════════════════════════════════════════════════ */
+function toggleDark() {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  localStorage.setItem('topo_dark', isDark ? '1' : '0');
+  document.getElementById('dark-toggle').textContent = isDark ? '☀️' : '🌙';
+  document.getElementById('theme-meta').content = isDark ? '#0d1117' : '#0056b3';
+}
+(function initDark() {
+  if (localStorage.getItem('topo_dark') === '1') {
+    document.body.classList.add('dark');
+    document.getElementById('dark-toggle').textContent = '☀️';
+    document.getElementById('theme-meta').content = '#0d1117';
+  }
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANEL
+═══════════════════════════════════════════════════════════════════════════ */
+function openPanel() {
+  document.getElementById('panel').style.display   = 'block';
+  document.getElementById('overlay').style.display = 'block';
+}
+function closePanel() {
+  document.getElementById('panel').style.display   = 'none';
+  document.getElementById('overlay').style.display = 'none';
+}
+
+// Mostrar/ocultar controles interactivos en el panel
+function setPanelMode(interactive) {
+  document.querySelectorAll('.panel-inter').forEach(el => {
+    el.style.display = interactive ? 'flex' : 'none';
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARGA DE ARCHIVO EXCEL
+═══════════════════════════════════════════════════════════════════════════ */
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+    sheets = {};
+    const sel = document.getElementById('sheet-select');
+    sel.innerHTML = '';
+
+    const valid = wb.SheetNames.filter(n => {
+      const l = n.toLowerCase();
+      return l.includes('subrasante') || l.includes('subbase') || l.includes('base');
+    });
+
+    if (valid.length === 0) { alert('No se encontraron hojas de capas válidas.'); return; }
+
+    valid.forEach(name => {
+      const json = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1});
+      sheets[name] = parseSheet(json, name);
+      const opt = document.createElement('option');
+      opt.value = opt.text = name;
+      sel.appendChild(opt);
+    });
+    sel.disabled = false;
+    onSheetChange();
+    closePanel();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function parseSheet(rows, name) {
+  const isInter = name.toLowerCase().includes('lecturas');
+  const iI = isInter ? 1 : 2;
+  const iE = isInter ? 3 : 5;
+  const iD = isInter ? 5 : 8;
+  let started = false;
+  const out = [];
+  for (const row of rows) {
+    if (!row || row.length === 0) continue;
+    const c0 = String(row[0]).trim();
+    if (c0.startsWith('Dm')) { started = true; continue; }
+    if (started && !isNaN(parseFloat(row[0]))) {
+      out.push({
+        dm:      row[0],
+        cotaIzq: parseFloat(row[iI]) || 0,
+        cotaEje: parseFloat(row[iE]) || 0,
+        cotaDer: parseFloat(row[iD]) || 0
+      });
+    }
+  }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALTURA DE INSTRUMENTO
+═══════════════════════════════════════════════════════════════════════════ */
+function calcAI() {
+  const cotaPR = parseFloat(document.getElementById('cota-pr').value);
+  const lat    = parseFloat(document.getElementById('lat').value);
+  if (!isNaN(cotaPR) && !isNaN(lat)) {
+    currentAI = cotaPR + lat;
+    document.getElementById('ai-out').value = currentAI.toFixed(3);
+    updateAIBar();
+    refreshCalcs();
+  } else {
+    currentAI = 0;
+    document.getElementById('ai-out').value = '';
+    updateAIBar();
+  }
+}
+function updateAIBar() {
+  const bar = document.getElementById('ai-bar');
+  if (!isModoConsulta) {
+    bar.style.display = 'flex';
+    document.getElementById('ai-bar-txt').textContent =
+      currentAI ? `AI = ${currentAI.toFixed(3)} m` : 'AI: ingrese Cota PR y L. Atrás';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RENDER TABLA
+═══════════════════════════════════════════════════════════════════════════ */
+function onSheetChange() {
+  currentSheet = document.getElementById('sheet-select').value;
+  if (!currentSheet || !sheets[currentSheet]) return;
+  isModoConsulta = !currentSheet.toLowerCase().includes('lecturas');
+  renderTable();
+}
+
+function renderTable() {
+  const datos = sheets[currentSheet];
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  // Ajustar colSpan de headers según modo
+  const span = isModoConsulta ? 1 : 3;
+  ['th-izq','th-eje','th-der'].forEach(id => {
+    document.getElementById(id).colSpan = span;
+  });
+  document.querySelectorAll('.col-dinamica').forEach(el => {
+    el.style.display = isModoConsulta ? 'none' : 'table-cell';
+  });
+
+  setPanelMode(!isModoConsulta);
+  updateAIBar();
+
+  const saved = getSavedReadings();
+
+  datos.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    if (isModoConsulta) {
+      tr.innerHTML = `
+        <td class="col-dm">${row.dm}</td>
+        <td class="col-izq">${row.cotaIzq.toFixed(3)}</td>
+        <td class="col-eje">${row.cotaEje.toFixed(3)}</td>
+        <td class="col-der">${row.cotaDer.toFixed(3)}</td>`;
+    } else {
+      const rv = saved[i] || {};
+      tr.innerHTML = `
+        <td class="col-dm">${row.dm}</td>
+        <td class="col-izq" id="teo-izq-${i}" data-cota="${row.cotaIzq}">-</td>
+        <td class="col-izq"><input type="number" step="0.001" class="inp"
+            id="real-izq-${i}" value="${rv.izq||''}"
+            oninput="onInput(${i},'izq')" onfocus="this.select()"></td>
+        <td class="col-izq" id="dif-izq-${i}">-</td>
+        <td class="col-eje" id="teo-eje-${i}" data-cota="${row.cotaEje}">-</td>
+        <td class="col-eje"><input type="number" step="0.001" class="inp"
+            id="real-eje-${i}" value="${rv.eje||''}"
+            oninput="onInput(${i},'eje')" onfocus="this.select()"></td>
+        <td class="col-eje" id="dif-eje-${i}">-</td>
+        <td class="col-der" id="teo-der-${i}" data-cota="${row.cotaDer}">-</td>
+        <td class="col-der"><input type="number" step="0.001" class="inp"
+            id="real-der-${i}" value="${rv.der||''}"
+            oninput="onInput(${i},'der')" onfocus="this.select()"></td>
+        <td class="col-der" id="dif-der-${i}">-</td>`;
+    }
+    tbody.appendChild(tr);
+  });
+
+  // Padding para AI bar y stats bar
+  document.getElementById('table-wrap').style.paddingTop    = isModoConsulta ? '0'   : '34px';
+  document.getElementById('table-wrap').style.paddingBottom = isModoConsulta ? '0'   : '34px';
+  document.getElementById('stats-bar').style.display        = isModoConsulta ? 'none': 'flex';
+
+  if (!isModoConsulta) refreshCalcs();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CÁLCULOS
+═══════════════════════════════════════════════════════════════════════════ */
+function refreshCalcs() {
+  if (isModoConsulta || !sheets[currentSheet]) return;
+  sheets[currentSheet].forEach((_, i) => {
+    ['izq','eje','der'].forEach(pos => calcTeo(i, pos));
+  });
+  updateStats();
+}
+
+function calcTeo(i, pos) {
+  const celTeo = document.getElementById(`teo-${pos}-${i}`);
+  if (!celTeo) return;
+  const cotaProy = parseFloat(celTeo.dataset.cota);
+  const lteo     = currentAI - cotaProy;
+  if (currentAI === 0) {
+    celTeo.textContent = '-';
+    celTeo.dataset.teo = '';
+    calcDif(i, pos);
+    return;
+  }
+  if (lteo > 4.000 || lteo < 0) {
+    celTeo.innerHTML    = '<span class="badge-cambio">CAMBIO</span>';
+    celTeo.dataset.teo  = 'cambio';
+  } else {
+    celTeo.textContent  = lteo.toFixed(3);
+    celTeo.dataset.teo  = lteo.toFixed(3);
+  }
+  calcDif(i, pos);
+}
+
+function calcDif(i, pos) {
+  const celTeo = document.getElementById(`teo-${pos}-${i}`);
+  const inpR   = document.getElementById(`real-${pos}-${i}`);
+  const celDif = document.getElementById(`dif-${pos}-${i}`);
+  if (!celTeo || !inpR || !celDif) return;
+
+  const teo  = celTeo.dataset.teo;
+  const real = parseFloat(inpR.value);
+
+  if (!teo || teo === 'cambio' || isNaN(real) || inpR.value === '') {
+    celDif.textContent  = '-';
+    celDif.className    = 'col-' + pos;
+    return;
+  }
+  const difMm = Math.round((parseFloat(teo) - real) * 1000);
+  celDif.textContent = (difMm > 0 ? '+' : '') + difMm;
+  const abs = Math.abs(difMm);
+  celDif.className = 'col-' + pos + ' ' +
+    (abs === 0 ? 'dif-ok' : abs <= 5 ? 'dif-ok' : abs <= 10 ? 'dif-warn' : 'dif-high') + ' ' +
+    (difMm > 0 ? 'dif-pos' : difMm < 0 ? 'dif-neg' : 'dif-ok');
+}
+
+function onInput(i, pos) {
+  saveReading(i, pos);
+  calcDif(i, pos);
+  updateStats();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ESTADÍSTICAS
+═══════════════════════════════════════════════════════════════════════════ */
+function updateStats() {
+  if (isModoConsulta || !sheets[currentSheet]) return;
+  let ok=0, hi=0, lo=0, nd=0;
+  sheets[currentSheet].forEach((_, i) => {
+    ['izq','eje','der'].forEach(pos => {
+      const cel = document.getElementById(`dif-${pos}-${i}`);
+      if (!cel) return;
+      const t = cel.textContent.trim();
+      if (t === '-') { nd++; return; }
+      const v = parseInt(t);
+      if (v === 0)      ok++;
+      else if (v > 0)   hi++;
+      else              lo++;
+    });
+  });
+  document.getElementById('s-ok').textContent = ok;
+  document.getElementById('s-hi').textContent = hi;
+  document.getElementById('s-lo').textContent = lo;
+  document.getElementById('s-nd').textContent = nd;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOCALSTORAGE
+═══════════════════════════════════════════════════════════════════════════ */
+function storageKey() { return `${STORAGE_KEY}_${currentSheet}`; }
+function getSavedReadings() {
+  try { return JSON.parse(localStorage.getItem(storageKey())) || {}; }
+  catch { return {}; }
+}
+function saveReading(i, pos) {
+  const saved = getSavedReadings();
+  if (!saved[i]) saved[i] = {};
+  const inp = document.getElementById(`real-${pos}-${i}`);
+  if (inp) saved[i][pos] = inp.value;
+  localStorage.setItem(storageKey(), JSON.stringify(saved));
+}
+function clearSavedReadings() {
+  localStorage.removeItem(storageKey());
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIMPIAR / EXPORTAR
+═══════════════════════════════════════════════════════════════════════════ */
+function limpiarLecturas() {
+  if (!confirm('¿Borrar todas las lecturas de campo guardadas para esta capa?')) return;
+  document.querySelectorAll('.inp').forEach(el => el.value = '');
+  clearSavedReadings();
+  refreshCalcs();
+  updateStats();
+}
+
+function exportar() {
+  if (!currentSheet || isModoConsulta) {
+    alert('Seleccione una hoja con "lecturas" para exportar.');
+    return;
+  }
+  const rows = [['Dm', 'Dif Izq (mm)', 'Dif Eje (mm)', 'Dif Der (mm)',
+                  'L.Real Izq', 'L.Real Eje', 'L.Real Der']];
+  sheets[currentSheet].forEach((row, i) => {
+    const di = document.getElementById(`dif-izq-${i}`)?.textContent || '-';
+    const de = document.getElementById(`dif-eje-${i}`)?.textContent || '-';
+    const dd = document.getElementById(`dif-der-${i}`)?.textContent || '-';
+    const ri = document.getElementById(`real-izq-${i}`)?.value || '';
+    const re = document.getElementById(`real-eje-${i}`)?.value || '';
+    const rd = document.getElementById(`real-der-${i}`)?.value || '';
+    if (di !== '-' || de !== '-' || dd !== '-') {
+      rows.push([row.dm,
+        di !== '-' ? parseInt(di) : '',
+        de !== '-' ? parseInt(de) : '',
+        dd !== '-' ? parseInt(dd) : '',
+        ri ? parseFloat(ri) : '',
+        re ? parseFloat(re) : '',
+        rd ? parseFloat(rd) : '']);
+    }
+  });
+  if (rows.length === 1) { alert('No hay diferencias registradas.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Diferencias');
+  XLSX.writeFile(wb, `Diferencias_${currentSheet}_AI${currentAI.toFixed(3)}.xlsx`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SERVICE WORKER
+═══════════════════════════════════════════════════════════════════════════ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', {scope: './'})
+      .then(reg => console.log('[SW] registrado:', reg.scope))
+      .catch(err => console.warn('[SW] error:', err));
+  });
+}
+</script>
+</body>
+</html>
